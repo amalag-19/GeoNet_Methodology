@@ -1,0 +1,7 @@
+"Affected Water Body","County","Date","Upstream Mean","Downstream Mean","No. of Observations Upstream","No. of Observations Downstream","t test (up) p values","t test (down) p values","t test (updown) p values"
+"Pine creek","Clinton","2009-09-01",7100,9087.5,2,16,NA,"0.68","0.22"
+"Beauty's Run","Lycoming","2009-06-01",15650,5580,2,2,NA,"0.43","0.86"
+"Slacks Run","Lycoming","2012-10-09",3363.33,3026.54,3,26,NA,"0.84","0.6"
+"Pine creek","Lycoming","2012-01-06",4431.13,4168.42,134,19,"0.29","0.82","0.76"
+"Pine Creek","Lycoming","2010-03-13",4431.13,4237.65,134,17,"0.54","0.96","0.67"
+"UNT to Sugar Run","Lycomng","2012-10-16",6425,6925,4,4,NA,"0.38","0.39"
