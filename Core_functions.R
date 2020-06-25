@@ -5,7 +5,7 @@
 ########################################################################################################
 
 ## Loading required libraries
-library(geosphere)
+{library(geosphere)
 library(network)
 library(igraph)
 library(mapdata)
@@ -17,6 +17,7 @@ library(MASS)
 library(foreach)
 library(doParallel)
 library(data.table)
+library(tidyverse)}
 # library(lubridate)
 
 ########################################################################################################
@@ -393,14 +394,14 @@ projected_nodeIDs_list_generator<-function(file_path,projected_threshold_dist_km
     ## Getting the node ids of top 1000 nearest nodes
     dist_vec<-distm(x = as.matrix(df_polluter_processed[i,c("lon","lat")]),y = as.matrix(df_node_latlong[,c("lon","lat")]))
     ## Getting the node IDs which lie within the projected_distance_threshold_km 
-    node_IDs_site_i<-df_node_latlong$nodeID[which(dist_vec<=(projected_threshold_dist_km*1000))]
+    node_IDs_site_i <- df_node_latlong$nodeID[which(dist_vec<=(projected_threshold_dist_km*1000))]
     
     ## Extracting vertex ids corresponding to these subsetted nodeIDs
-    vertex_IDs_site_i<-which(V(igraph_river_whole)$name%in%node_IDs_site_i)
+    vertex_IDs_site_i <- which(V(igraph_river_whole)$name %in% node_IDs_site_i)
     #vertex_IDs_site_i<-vertex_IDs_all
     ## Getting the shortest path from polluter_i to all the subsetted nodes
     #ptm<-proc.time()
-    short_path<-shortest_paths(graph = igraph_river_whole,from=which(V(igraph_river_whole)$name%in%df_polluter_processed$nodeID[i]), to= vertex_IDs_site_i,mode = "out",output = "vpath")
+    short_path <- shortest_paths(graph = igraph_river_whole, from = which(V(igraph_river_whole)$name %in% df_polluter_processed$nodeID[i]), to = vertex_IDs_site_i,mode = "out",output = "vpath")
     #print(proc.time()-ptm)
     ## Trimming the paths with length 0 and storing all paths (among nodeIDs) in a list
     short_path_list<-lapply(X = short_path$vpath,FUN = function(x){
@@ -417,8 +418,6 @@ projected_nodeIDs_list_generator<-function(file_path,projected_threshold_dist_km
     if(length(which(short_path_length_vec==1))>=1){
       short_path_list[which(short_path_length_vec==1)]<-NULL
     }
-    
-    
     ## Deleting all nodes that occur on same stream (same Strahler number for the stream downstream) but are farther apart.
     ## Initializing the list IDs to set NULL later
     # delete_IDs<-c()
@@ -437,14 +436,14 @@ projected_nodeIDs_list_generator<-function(file_path,projected_threshold_dist_km
     # }
     # short_path_list[sort(unique(delete_IDs))]<-NULL
     ## Extracting the end node_IDs and declaring them as projected node IDs
-    projected_nodeIDs_list[[i]]<-sapply(X = short_path_list,FUN = function(x) return(x[length(x)]))
+    projected_nodeIDs_list[[i]] <- sapply(X = short_path_list,FUN = function(x) return(x[length(x)]))
     print(i)
   }
-  names(projected_nodeIDs_list)<-df_polluter_processed$nodeID
+  names(projected_nodeIDs_list) <- df_polluter_processed$nodeID
   ## Saving the projected nodeIDs list
   save(projected_nodeIDs_list,file = paste0(file_path,"polluter_files/projected_nodeIDs_list.RData"))
   ## Extracting the vector of projected node_IDs
-  projected_nodeIDs_vec<-unlist(projected_nodeIDs_list)
+  projected_nodeIDs_vec <- unlist(projected_nodeIDs_list)
   attr(projected_nodeIDs_vec,"names")<-NULL
   ## Saving the projected nodeIDs vector
   save(projected_nodeIDs_vec,file = paste0(file_path,"polluter_files/projected_nodeIDs_vec.RData"))
@@ -675,7 +674,7 @@ shortest_path_edgelist_creator_parallelized_2<-function(n_chunks,file_path){
 ########################################################################################################
 ########################################################################################################
 ## Writing a function to create edgelist and node dataframe for analyte-polluter network using shortest_path_edgelist. Inputs is directory path where output files should be stored at. Outputs are 1) "anpoll_edgelist" and 2) df_node_latlong_anpoll
-anpoll_network_creator<-function(output_path){
+anpoll_network_creator <- function(output_path){
   ## Loading the path edgelist
   load(file = paste0(output_path,"anpoll_files/shortest_path_anpoll_edgelist.RData"))
   ## Loop to create analyte_polluter_edgelist from shortest path edgelist
@@ -702,7 +701,7 @@ anpoll_network_creator<-function(output_path){
 #######################################################################################################
 ########################################################################################################
 ## Defining a wrapper function to calculate flow distance of all polluter nodes in parallel
-wrapper_flow_dist_cal<-function(df_polluter,anpoll_edgelist, shortest_path_anpoll_edgelist, total_edgelist_character_modified, from_indicator, to_indicator, file_path){
+wrapper_flow_dist_cal <- function(df_polluter,anpoll_edgelist, shortest_path_anpoll_edgelist, total_edgelist_character_modified, from_indicator, to_indicator, file_path){
   ## Defining a function to calculate between a test node and a current node. The current nodes are usually polluter nodes.
   flow_dist_cal<-function(anpoll_edgelist, shortest_path_anpoll_edgelist, total_edgelist_character_modified, test_node_ID, current_node_ID, from_indicator, to_indicator, file_path){
     ## Getting the edge row ID
@@ -746,6 +745,57 @@ wrapper_flow_dist_cal<-function(df_polluter,anpoll_edgelist, shortest_path_anpol
   return(flow_dist_vec)
 }
 
+## Defining a wrapper function to calculate flow distance of all polluter nodes in parallel by dividing in chunks. The chunk code was written by Alex so may need another look...
+wrapper_flow_dist_cal_chunk_parallelized <- function(df_polluter,anpoll_edgelist, shortest_path_anpoll_edgelist, total_edgelist_character_modified, from_indicator, to_indicator,chunk_list,n_chunk, file_path){
+  ## Defining a function to calculate between a test node and a current node. The current nodes are usually polluter nodes.
+  flow_dist_cal<-function(anpoll_edgelist, shortest_path_anpoll_edgelist, total_edgelist_character_modified, test_node_ID, current_node_ID, from_indicator, to_indicator, file_path){
+    ## Getting the edge row ID
+    if(from_indicator){
+      edge_row_ID<-which((anpoll_edgelist[,1]==test_node_ID)&(anpoll_edgelist[,2]==current_node_ID))
+    }else if(to_indicator){
+      edge_row_ID<-which((anpoll_edgelist[,1]==current_node_ID)&(anpoll_edgelist[,2]==test_node_ID))
+    }
+    ## Initializing and loop to fill up the matrix of edges that are formed by the nodeIDs in the path of test and current node ID
+    flow_path_nodeIDs<-matrix(NA_character_,nrow = (length(shortest_path_anpoll_edgelist[[edge_row_ID]])-1),ncol = 2)
+    for (i in 1:(length(shortest_path_anpoll_edgelist[[edge_row_ID]])-1)){
+      flow_path_nodeIDs[i,]<-c(shortest_path_anpoll_edgelist[[edge_row_ID]][i],shortest_path_anpoll_edgelist[[edge_row_ID]][i+1])
+    }
+    ## Loading the total_edgelist_character_modified
+    load(file = paste0(file_path,"common_files_modified/stream_path_dist_vec.RData"))
+    ## Initializing the flow distance in meters
+    flow_dist_m<-0
+    ## Loop to add up the flow distance of all edges in the flow_path_nodeIDs
+    for(i in 1:nrow(flow_path_nodeIDs)){
+      flow_dist_m<-flow_dist_m+stream_path_dist_vec[which((total_edgelist_character_modified[,1]==flow_path_nodeIDs[i,1])&(total_edgelist_character_modified[,2]==flow_path_nodeIDs[i,2]))]
+    }
+    ## flow distance in km
+    flow_dist_km<-flow_dist_m/1000
+    return(flow_dist_km)
+  }
+  ## Extracting all connected nodeIDs
+  chunk_df = df_projected_nodeIDs[chunk_list[[n_chunk]],] # Separating by each chunk
+  flow_dist_vec_list = list()
+  for(index in 1:nrow(chunk_df)){
+    if(from_indicator){
+      connected_nodeIDs<-anpoll_edgelist[which(anpoll_edgelist[,2]==chunk_df[index]),1]
+    }else if(to_indicator){
+      connected_nodeIDs<-anpoll_edgelist[which(anpoll_edgelist[,1]==chunk_df[index]),2]
+    }
+    ## Initializing the flow_dist_vec as NA. If there are no connected nodes, this would remain NA
+    flow_dist_vec<-NA
+    if(length(connected_nodeIDs)>0){
+      flow_dist_vec<-rep(NA_integer_,length(connected_nodeIDs))
+      for(j in 1:length(connected_nodeIDs)){
+        flow_dist_vec[j]<-flow_dist_cal(anpoll_edgelist = anpoll_edgelist,shortest_path_anpoll_edgelist = shortest_path_anpoll_edgelist,total_edgelist_character_modified = total_edgelist_character_modified,test_node_ID = connected_nodeIDs[j],current_node_ID = chunk_df[index],from_indicator = from_indicator,to_indicator = to_indicator,file_path = file_path)
+        #print(j)
+      }
+    }
+    flow_dist_vec_list[[chunk_df[index]]] = flow_dist_vec
+  }
+  save(flow_dist_vec_list, file = paste0(file_path,"anpoll_files/flow_dist_chunks/flow_dist_chunk_",n_chunk,".RData"))
+  return(flow_dist_vec)
+}
+
 ########################################################################################################
 ############################################# Inference ################################################
 ########################################################################################################
@@ -784,25 +834,9 @@ from_nodeIDs_crawler<-function(nodeID,upstream_threshold_dist_km,file_path){
 }
 
 ## Writing a function to do inference that is testing the significance of polluter for given polluter coordinates, threshold flow distance and time interval, to collect all observations upstream and downstream within the specified threshold flow distance and time and do a two sample two sided t test and Wilcoxon rank sum test. Inputs are 1) latlong of polluter 2) threshold flow distance and 3) time interval. Outputs are mean, median and length of observations upstream and downstream within the specified threshold flow distance and year interval and the corresponding p values
-polluter_test_dist_time<-function(df_polluter, polluter_lon, polluter_lat, polluter_projected_dist_km, upstream_threshold_dist_km, downstream_threshold_lower_dist_km, downstream_threshold_upper_dist_km, date_start, date_end, spill_date, file_path){
-  ####################################################
-  ## Loading the analyte-polluter network edgelist "anpoll_edgelist"
-  load(file = paste0(file_path,"anpoll_files/anpoll_edgelist.RData"))
-  ## Loading the analyte-polluter network edgelist "anpoll_edgelist"
-  load(file = paste0(file_path,"anpoll_files/shortest_path_anpoll_edgelist.RData"))
-  ## Loading the "total_edgelist_character_modified"
-  load(file = paste0(file_path,"common_files_modified/total_edgelist_character_modified.RData"))
-  ## Loading the "flow_dist_from_list"
-  load(file = paste0(file_path,"inference/flow_dist_from_list.RData"))
-  ## Loading the "flow_dist_to_list"
-  load(file = paste0(file_path,"inference/flow_dist_to_list.RData"))
-  ## Loading the projected_nodeIDs_list
-  load(file=paste0(file_path,"polluter_files/projected_nodeIDs_list.RData"))
-  ## Loading the distances of polluters to projected nodes
-  load(file=paste0(file_path,"polluter_files/flow_dist_polluter_projected_list.RData"))
-  
+polluter_test_dist_time <- function(df_polluter, polluter_lon, polluter_lat, polluter_projected_dist_km, upstream_threshold_dist_km, downstream_threshold_lower_dist_km, downstream_threshold_upper_dist_km, date_start, date_end, spill_date, file_path){
   ## Extracting polluter node ID from the dataframe given the polluter latlong
-  polluter_node_ID<-unique(df_polluter$nodeID[which((df_polluter$lon_mapped==polluter_lon)&(df_polluter$lat_mapped==polluter_lat))])
+  polluter_node_ID<-unique(df_polluter$nodeID[which((df_polluter$lon_mapped==polluter_lon)&(df_polluter$lat_mapped==polluter_lat))])[1]
   
   ####################################################
   ## Collecting all to nodes that are directed from the polluter_nodeID
@@ -825,7 +859,9 @@ polluter_test_dist_time<-function(df_polluter, polluter_lon, polluter_lat, pollu
       to_counter_flag<-0
     }
   }
-  to_nodeIDs<-unique(to_nodeIDs)
+  if(to_counter_flag==1){
+    to_nodeIDs<-unique(to_nodeIDs)
+  }
   
   ####################################################
   ## Collecting all from nodes that point to the polluter_nodeID and corresponding projected node_IDs
@@ -836,14 +872,14 @@ polluter_test_dist_time<-function(df_polluter, polluter_lon, polluter_lat, pollu
   projected_nodeIDs_subset<-projected_nodeIDs_total[projected_vec_ids]
   
   ## Initializing the vector of from_nodeIDs containing upstream sampling nodes for the polluter node and it's projected nodes
-  from_nodeIDs<-c()
+  from_nodeIDs <- c()
   ## Intializing the from_counter_flag to know later whether there is atleast one upstream node
-  from_count<-0
+  from_count <- 0
   
   ## Getting the upstream nodes for polluter node ID 
-  from_nodeIDs_polluter_list<-from_nodeIDs_crawler(nodeID = polluter_node_ID,upstream_threshold_dist_km = upstream_threshold_dist_km, file_path = file_path)
-  from_nodeIDs<-c(from_nodeIDs,from_nodeIDs_polluter_list[[1]])
-  from_count<-from_count+from_nodeIDs_polluter_list[[2]]
+  from_nodeIDs_polluter_list <- from_nodeIDs_crawler(nodeID = polluter_node_ID,upstream_threshold_dist_km = upstream_threshold_dist_km, file_path = file_path)
+  from_nodeIDs <- c(from_nodeIDs,from_nodeIDs_polluter_list[[1]])
+  from_count <- from_count+from_nodeIDs_polluter_list[[2]]
   
   ## Getting the upstream nodes for projected node IDs
   for(i in 1:length(projected_nodeIDs_subset)){
@@ -856,7 +892,9 @@ polluter_test_dist_time<-function(df_polluter, polluter_lon, polluter_lat, pollu
     from_nodeIDs<-c(from_nodeIDs,from_nodeIDs_subset)
     from_count<-from_count+from_nodeIDs_projected_list[[2]]
   }
-  from_nodeIDs<-unique(from_nodeIDs)
+  if(length(from_nodeIDs)>0){
+    from_nodeIDs<-unique(from_nodeIDs)
+  }
   
   ####################################################
   ## Collecting all from and to observations within the time interval specified
@@ -869,14 +907,14 @@ polluter_test_dist_time<-function(df_polluter, polluter_lon, polluter_lat, pollu
   load(file = paste0(file_path,"analyte_files/list_analyte_time.RData"))
   
   ## Initializing the from observation vectors upstream of given polluter node ID
-  from_obs_total<-c()
-  from_obs_before_spill<-c()
-  from_obs_after_spill<-c()
+  from_obs_total <- c()
+  from_obs_before_spill <- c()
+  from_obs_after_spill <- c()
   
   ## Initializing the to observation vectors upstream of given polluter node ID
-  to_obs_total<-c()
-  to_obs_before_spill<-c()
-  to_obs_after_spill<-c()
+  to_obs_total <- c()
+  to_obs_before_spill <- c()
+  to_obs_after_spill <- c()
   
   ## Loop to collect all from obervations within the time interval specified
   if(from_count>=1){
@@ -895,7 +933,10 @@ polluter_test_dist_time<-function(df_polluter, polluter_lon, polluter_lat, pollu
           from_obs_before_spill<-c(from_obs_before_spill,list_analyte_time[[listID_i]]$conc[row_ids_date_interval_before_spill])
         }
         ## Getting upstream observations till one year after the spill date
-        row_ids_date_interval_after_spill<-which(between((list_analyte_time[[listID_i]]$date), spill_date, spill_date %m+% years(1)))
+        spill_date_POSIX<-as.POSIXlt(spill_date)
+        spill_date_POSIX$year<-spill_date_POSIX$year+1
+        spill_date_after1year<-as.Date(spill_date_POSIX)
+        row_ids_date_interval_after_spill<-which(between((list_analyte_time[[listID_i]]$date), spill_date, spill_date_after1year))
         if(length(row_ids_date_interval_after_spill)>0){
           from_obs_after_spill<-c(from_obs_after_spill,list_analyte_time[[listID_i]]$conc[row_ids_date_interval_after_spill])
         }
@@ -910,243 +951,296 @@ polluter_test_dist_time<-function(df_polluter, polluter_lon, polluter_lat, pollu
       if(analyte_indicator){
         listID_i<-which(listID_nodeID_matrix[,2]==to_nodeIDs[i])
         ## Getting all downstream observations with after one year spill date condition
-        row_ids_date_interval_total<-which((between((list_analyte_time[[listID_i]]$date), date_start, date_end))&(between((list_analyte_time[[listID_i]]$date), spill_date, spill_date %m+% years(1))))
+        spill_date_POSIX<-as.POSIXlt(spill_date)
+        spill_date_POSIX$year<-spill_date_POSIX$year+1
+        spill_date_after1year<-as.Date(spill_date_POSIX)
+        row_ids_date_interval_total<-which((between((list_analyte_time[[listID_i]]$date), date_start, date_end))&(between((list_analyte_time[[listID_i]]$date), spill_date, spill_date_after1year)))
         if(length(row_ids_date_interval_total)>0){
           to_obs_total<-c(to_obs_total,list_analyte_time[[listID_i]]$conc[row_ids_date_interval_total])
         }
         ## Getting all downstream observations before the spill date
         row_ids_date_interval_before_spill<-which(between((list_analyte_time[[listID_i]]$date), date_start, spill_date))
         if(length(row_ids_date_interval_before_spill)>0){
-          to_obs_before_spill<-c(to_obs_before_spill,list_analyte_time[[listID_i]]$conc[row_ids_date_interval_before_spill])
+          to_obs_before_spill <- c(to_obs_before_spill,list_analyte_time[[listID_i]]$conc[row_ids_date_interval_before_spill])
         }
         ## Getting downstream observations till one year after the spill date
-        row_ids_date_interval_after_spill<-which(between((list_analyte_time[[listID_i]]$date), spill_date, spill_date %m+% years(1)))
+        spill_date_POSIX<-as.POSIXlt(spill_date)
+        spill_date_POSIX$year<-spill_date_POSIX$year+1
+        spill_date_after1year<-as.Date(spill_date_POSIX)
+        row_ids_date_interval_after_spill<-which(between((list_analyte_time[[listID_i]]$date), spill_date, spill_date_after1year))
         if(length(row_ids_date_interval_after_spill)>0){
-          to_obs_after_spill<-c(to_obs_after_spill,list_analyte_time[[listID_i]]$conc[row_ids_date_interval_after_spill])
+          to_obs_after_spill <- c(to_obs_after_spill,list_analyte_time[[listID_i]]$conc[row_ids_date_interval_after_spill])
         }
       }
     }
   }
   
   ####################################################
-  if(c("analyte")%in%(df_node_latlong_anpoll[which(df_node_latlong_anpoll$nodeID==polluter_node_ID),"anpoll_indicator"])){
+  if(c("analyte") %in% (df_node_latlong_anpoll[which(df_node_latlong_anpoll$nodeID == polluter_node_ID), "anpoll_indicator"])){
     #polluter_use_flag<-0
-    listID<-which(listID_nodeID_matrix[,2]==polluter_node_ID)
+    listID <- which(listID_nodeID_matrix[,2]==polluter_node_ID)
     ## Getting all downstream observations with after one year spill date condition
-    row_ids_date_interval_total<-which((between((list_analyte_time[[listID]]$date), date_start, date_end))&((between((list_analyte_time[[listID]]$date), spill_date, spill_date %m+% years(1)))))
-    if(length(row_ids_date_interval_total)>0){
-      to_obs_total<-c(to_obs_total,list_analyte_time[[listID]]$conc[row_ids_date_interval_total])
+    spill_date_POSIX <- as.POSIXlt(spill_date)
+    spill_date_POSIX$year <- spill_date_POSIX$year+1
+    spill_date_after1year <- as.Date(spill_date_POSIX)
+    row_ids_date_interval_total <- which((between((list_analyte_time[[listID]]$date), date_start, date_end)) & ((between((list_analyte_time[[listID]]$date), date_start, spill_date_after1year))))
+    if(length(row_ids_date_interval_total) > 0){
+      to_obs_total <- c(to_obs_total,list_analyte_time[[listID]]$conc[row_ids_date_interval_total])
       #polluter_use_flag<-1
     }
     ## Getting all downstream observations before the spill date
-    row_ids_date_interval_before_spill<-which(between((list_analyte_time[[listID]]$date), date_start, spill_date))
-    if(length(row_ids_date_interval_before_spill)>0){
-      to_obs_before_spill<-c(to_obs_before_spill,list_analyte_time[[listID]]$conc[row_ids_date_interval_before_spill])
+    row_ids_date_interval_before_spill <- which(between((list_analyte_time[[listID]]$date), date_start, spill_date))
+    if(length(row_ids_date_interval_before_spill) > 0){
+      to_obs_before_spill <- c(to_obs_before_spill,list_analyte_time[[listID]]$conc[row_ids_date_interval_before_spill])
     }
     ## Getting downstream observations till one year after the spill date
-    row_ids_date_interval_after_spill<-which(between((list_analyte_time[[listID]]$date), spill_date, spill_date %m+% years(1)))
-    if(length(row_ids_date_interval_after_spill)>0){
-      to_obs_after_spill<-c(to_obs_after_spill,list_analyte_time[[listID]]$conc[row_ids_date_interval_after_spill])
+    spill_date_POSIX <- as.POSIXlt(spill_date)
+    spill_date_POSIX$year <- spill_date_POSIX$year + 1
+    spill_date_after1year <- as.Date(spill_date_POSIX)
+    row_ids_date_interval_after_spill <- which(between((list_analyte_time[[listID]]$date), spill_date, spill_date_after1year))
+    if(length(row_ids_date_interval_after_spill) > 0){
+      to_obs_after_spill <- c(to_obs_after_spill,list_analyte_time[[listID]]$conc[row_ids_date_interval_after_spill])
     }
   }
   
   ########################################################################################################
   ## First temporal test before vs. after spill date for upstream 
-  if(length(from_obs_before_spill)==0){
-    from_mean_before_spill<-NA
-    from_median_before_spill<-NA
+  if(length(from_obs_before_spill) == 0){
+    from_mean_before_spill <- NA
+    from_median_before_spill <- NA
   }else{
-    from_mean_before_spill<-mean(from_obs_before_spill)
-    from_median_before_spill<-median(from_obs_before_spill)
+    from_mean_before_spill <- mean(from_obs_before_spill)
+    from_median_before_spill <- median(from_obs_before_spill)
   }
-  from_n_before_spill<-length(from_obs_before_spill)
+  from_n_before_spill <- length(from_obs_before_spill)
   
   ####################################################
-  if(length(from_obs_after_spill)==0){
-    from_mean_after_spill<-NA
-    from_median_after_spill<-NA
+  if(length(from_obs_after_spill) == 0){
+    from_mean_after_spill <- NA
+    from_median_after_spill <- NA
   }else{
-    from_mean_after_spill<-mean(from_obs_after_spill)
-    from_median_after_spill<-median(from_obs_after_spill)
+    from_mean_after_spill <- mean(from_obs_after_spill)
+    from_median_after_spill <- median(from_obs_after_spill)
   }
-  from_n_after_spill<-length(from_obs_after_spill)
+  from_n_after_spill <- length(from_obs_after_spill)
   ####################################################
-  if((from_n_before_spill>0)&(from_n_after_spill>0)){
-    mean_diff<-from_mean_after_spill-from_mean_before_spill
-    if((from_n_before_spill>1)&(from_n_after_spill>1)){
-      p_value_t.test_1sided_upstream<-t.test(x = from_obs_before_spill,y = from_obs_after_spill,alternative = "less")$p.value
+  if((from_n_before_spill > 0) & (from_n_after_spill > 0)){
+    mean_diff <- from_mean_after_spill - from_mean_before_spill
+    if((from_n_before_spill > 1) & (from_n_after_spill > 1)){
+      if(class(try(t.test(x = from_obs_before_spill, y = from_obs_after_spill,alternative = "less")$p.value))=="try-error"){
+        p_value_t.test_1sided_upstream <- t.test(x = c((from_obs_before_spill[1] + 0.01), from_obs_before_spill[-1]), y = c((from_obs_after_spill[1] + 0.01), from_obs_after_spill[-1]), alternative = "less")$p.value
+      }else{
+        p_value_t.test_1sided_upstream <- t.test(x = from_obs_before_spill, y = from_obs_after_spill, alternative = "less")$p.value
+      }
       #p_value_wilcox.test_2sided<-wilcox.test(x = from_obs_total,y = to_obs_total)$p.value
-      p_value_wilcox.test_1sided_upstream<-wilcox.test(x = from_obs_before_spill,y = from_obs_after_spill,alternative = "less")$p.value
-      test_pass_upstream<-1
+      if(class(try(wilcox.test(x = from_obs_before_spill, y = from_obs_after_spill,alternative = "less")$p.value)) == "try-error"){
+        p_value_wilcox.test_1sided_upstream <- wilcox.test(x = c((from_obs_before_spill[1] + 0.01), from_obs_before_spill[-1]), y = c((from_obs_after_spill[1] + 0.01), from_obs_after_spill[-1]), alternative = "less")$p.value
+      }else{
+        p_value_wilcox.test_1sided_upstream <- wilcox.test(x = from_obs_before_spill, y = from_obs_after_spill,alternative = "less")$p.value
+      }
+      
+      test_pass_upstream <- 1
     }else{
-      p_value_t.test_1sided_upstream<-NA
+      p_value_t.test_1sided_upstream <- NA
       #p_value_wilcox.test_2sided<-NA
-      p_value_wilcox.test_1sided_upstream<-NA
-      test_pass_upstream<-0
+      p_value_wilcox.test_1sided_upstream <- NA
+      test_pass_upstream <- 0
     }
   }else{
-    p_value_t.test_1sided_upstream<-NA
+    p_value_t.test_1sided_upstream <- NA
     #p_value_wilcox.test_2sided<-NA
-    p_value_wilcox.test_1sided_upstream<-NA
-    test_pass_upstream<-0
+    p_value_wilcox.test_1sided_upstream <- NA
+    test_pass_upstream <- 0
   }
-  summary_upstream<-c(p_value_t.test_1sided_upstream,p_value_wilcox.test_1sided_upstream,test_pass_upstream)
+  summary_upstream <- c(p_value_t.test_1sided_upstream, p_value_wilcox.test_1sided_upstream, test_pass_upstream)
   
   ########################################################################################################
   ## Second temporal test before vs. after spill date for downstream 
-  if(length(to_obs_before_spill)==0){
-    to_mean_before_spill<-NA
-    to_median_before_spill<-NA
+  if(length(to_obs_before_spill) == 0){
+    to_mean_before_spill <- NA
+    to_median_before_spill <- NA
   }else{
-    to_mean_before_spill<-mean(to_obs_before_spill)
-    to_median_before_spill<-median(to_obs_before_spill)
+    to_mean_before_spill <- mean(to_obs_before_spill)
+    to_median_before_spill <- median(to_obs_before_spill)
   }
-  to_n_before_spill<-length(to_obs_before_spill)
+  to_n_before_spill <- length(to_obs_before_spill)
   
   ####################################################
-  if(length(to_obs_after_spill)==0){
-    to_mean_after_spill<-NA
-    to_median_after_spill<-NA
+  if(length(to_obs_after_spill) == 0){
+    to_mean_after_spill <- NA
+    to_median_after_spill <- NA
   }else{
-    to_mean_after_spill<-mean(to_obs_after_spill)
-    to_median_after_spill<-median(to_obs_after_spill)
+    to_mean_after_spill <- mean(to_obs_after_spill)
+    to_median_after_spill <- median(to_obs_after_spill)
   }
-  to_n_after_spill<-length(to_obs_after_spill)
+  to_n_after_spill <- length(to_obs_after_spill)
   ####################################################
-  if((to_n_before_spill>0)&(to_n_after_spill>0)){
-    mean_diff<-to_mean_after_spill-to_mean_before_spill
-    if((to_n_before_spill>1)&(to_n_after_spill>1)){
-      p_value_t.test_1sided_downstream<-t.test(x = to_obs_before_spill,y = to_obs_after_spill,alternative = "less")$p.value
+  if((to_n_before_spill > 0) & (to_n_after_spill > 0)){
+    mean_diff <- to_mean_after_spill - to_mean_before_spill
+    if((to_n_before_spill > 1) & (to_n_after_spill > 1)){
+      if(class(try(t.test(x = to_obs_before_spill,y = to_obs_after_spill,alternative = "less")$p.value)) == "try-error"){
+        p_value_t.test_1sided_downstream <- t.test(x = c((to_obs_before_spill[1] + 0.01), to_obs_before_spill[-1]), y = c((to_obs_after_spill[1] + 0.01), to_obs_after_spill[-1]), alternative = "less")$p.value
+      }else{
+        p_value_t.test_1sided_downstream <- t.test(x = to_obs_before_spill,y = to_obs_after_spill,alternative = "less")$p.value
+      }
+      
       #p_value_wilcox.test_2sided<-wilcox.test(x = from_obs_total,y = to_obs_total)$p.value
-      p_value_wilcox.test_1sided_downstream<-wilcox.test(x = to_obs_before_spill,y = to_obs_after_spill,alternative = "less")$p.value
-      test_pass_downstream<-1
+      if(class(try(wilcox.test(x = to_obs_before_spill,y = to_obs_after_spill,alternative = "less")$p.value)) == "try-error"){
+        p_value_wilcox.test_1sided_downstream <- wilcox.test(x = c((to_obs_before_spill[1] + 0.01), to_obs_before_spill[-1]), y = c((to_obs_after_spill[1] + 0.01), to_obs_after_spill[-1]), alternative = "less")$p.value
+      }else{
+        p_value_wilcox.test_1sided_downstream <- wilcox.test(x = to_obs_before_spill, y = to_obs_after_spill, alternative = "less")$p.value
+      }
+      test_pass_downstream <- 1
     }else{
-      p_value_t.test_1sided_downstream<-NA
+      p_value_t.test_1sided_downstream <- NA
       #p_value_wilcox.test_2sided<-NA
-      p_value_wilcox.test_1sided_downstream<-NA
-      test_pass_downstream<-0
+      p_value_wilcox.test_1sided_downstream <- NA
+      test_pass_downstream <- 0
     }
   }else{
-    p_value_t.test_1sided_downstream<-NA
+    p_value_t.test_1sided_downstream <- NA
     #p_value_wilcox.test_2sided<-NA
-    p_value_wilcox.test_1sided_downstream<-NA
-    test_pass_downstream<-0
+    p_value_wilcox.test_1sided_downstream <- NA
+    test_pass_downstream <- 0
   }
-  summary_downstream<-c(p_value_t.test_1sided_downstream,p_value_wilcox.test_1sided_downstream,test_pass_downstream)
+  summary_downstream <- c(p_value_t.test_1sided_downstream, p_value_wilcox.test_1sided_downstream, test_pass_downstream)
   
   ########################################################################################################
   ## Third spatio-temporal test for before and after spill date upstream observations vs after spill date downstream observations.
-  if(length(from_obs_total)==0){
-    from_mean_total<-NA
-    from_median_total<-NA
+  if(length(from_obs_total) == 0){
+    from_mean_total <- NA
+    from_median_total <- NA
   }else{
-    from_mean_total<-mean(from_obs_total)
-    from_median_total<-median(from_obs_total)
+    from_mean_total <- mean(from_obs_total)
+    from_median_total <- median(from_obs_total)
   }
-  from_n_total<-length(from_obs_total)
+  from_n_total <- length(from_obs_total)
   
   ####################################################
-  if(length(to_obs_total)==0){
-    to_mean_total<-NA
-    to_median_total<-NA
+  if(length(to_obs_total) == 0){
+    to_mean_total <- NA
+    to_median_total <- NA
   }else{
-    to_mean_total<-mean(to_obs_total)
-    to_median_total<-median(to_obs_total)
+    to_mean_total <- mean(to_obs_total)
+    to_median_total <- median(to_obs_total)
   }
-  to_n_total<-length(to_obs_total)
+  to_n_total <- length(to_obs_total)
   ####################################################
-  if((from_n_total>0)&(to_n_total>0)){
-    mean_diff<-to_mean_total-from_mean_total
-    if((from_n_total>1)&(to_n_total>1)){
-      p_value_t.test_1sided_total<-t.test(x = from_obs_total,y = to_obs_total,alternative = "less")$p.value
+  if((from_n_total > 0) & (to_n_after_spill > 0)){
+    mean_diff <- to_mean_after_spill - from_mean_total
+    if((from_n_total > 1) & (to_n_after_spill > 1)){
+      if(class(try(t.test(x = from_obs_total, y = to_obs_after_spill,alternative = "less")$p.value, silent = T)) == "try-error"){
+        p_value_t.test_1sided_total <- t.test(x = c(from_obs_total[1] + 0.01, from_obs_total[-1]), y = c(to_obs_after_spill[1] + 0.01, to_obs_after_spill[-1]), alternative = "less")$p.value
+      }else{
+        p_value_t.test_1sided_total <- t.test(x = from_obs_total, y = to_obs_after_spill, alternative = "less")$p.value
+      }
       #p_value_wilcox.test_2sided<-wilcox.test(x = from_obs_total,y = to_obs_total)$p.value
-      p_value_wilcox.test_1sided_total<-wilcox.test(x = from_obs_total,y = to_obs_total,alternative = "less")$p.value
-      test_pass_total<-1
+      if(class(try(wilcox.test(x = from_obs_total, y = to_obs_after_spill, alternative = "less")$p.value)) == "try-error"){
+        p_value_wilcox.test_1sided_total <- wilcox.test(x = c((from_obs_total[1] + 0.01), from_obs_total[-1]), y = c((to_obs_after_spill[1] + 0.01), to_obs_after_spill[-1]), alternative = "less")$p.value
+      }else{
+        p_value_wilcox.test_1sided_total <- wilcox.test(x = from_obs_total, y = to_obs_after_spill, alternative = "less")$p.value
+      }
+      
+      test_pass_total <- 1
     }else{
-      p_value_t.test_1sided_total<-NA
+      p_value_t.test_1sided_total <- NA
       #p_value_wilcox.test_2sided<-NA
-      p_value_wilcox.test_1sided_total<-NA
-      test_pass_total<-0
+      p_value_wilcox.test_1sided_total <- NA
+      test_pass_total <- 0
     }
   }else{
-    p_value_t.test_1sided_total<-NA
+    p_value_t.test_1sided_total <- NA
     #p_value_wilcox.test_2sided<-NA
-    p_value_wilcox.test_1sided_total<-NA
-    test_pass_total<-0
+    p_value_wilcox.test_1sided_total <- NA
+    test_pass_total <- 0
   }
-  summary_total<-c(from_mean_total,to_mean_total,from_median_total,to_median_total,from_n_total,to_n_total,p_value_t.test_1sided_total,p_value_wilcox.test_1sided_total,test_pass_total)
+  summary_total <- c(from_mean_total, to_mean_total, from_median_total, to_median_total, from_n_total, to_n_total, p_value_t.test_1sided_total, p_value_wilcox.test_1sided_total, test_pass_total)
   
-  return(list(summary_upstream,summary_downstream,summary_total,from_obs_total,to_obs_total))
+  return(list("summary_upstream" = summary_upstream, "summary_downstream" = summary_downstream, "summary_total" = summary_total, "All_upstream_obs" = from_obs_total, "All_downstream_obs" = to_obs_total, "After_spill_downstream_obs" = to_obs_after_spill))
 }
 
 ########################################################################################################
 ## Defining a function for FDR control using BH procedure, Inputs are 1) a vector of p values and 2) significance level alpha (usually set as 0.1). Outputs are 1) a vector of decisions (reject null hypothesis is 1) and 2) a flag indicating if we made atleast one discovery
-fdr_decision_cal<-function(p_val,alpha){
-  p_val_ordered<-sort(p_val)
-  fdr_decision<-rep(0,length(p_val_ordered))
-  flag_atleast_1_discovery<-0
+fdr_decision_cal <- function(p_val,alpha){
+  p_val_ordered <- sort(p_val)
+  fdr_decision <- rep(0,length(p_val_ordered))
+  flag_atleast_1_discovery <- 0
   for (i in length(p_val_ordered):1){
-    if(p_val_ordered[i]<=((i/length(p_val_ordered))*alpha)){
-      i_max<-i
-      flag_atleast_1_discovery<-1
-      fdr_decision[order(p_val)[1:i_max]]<-1
+    if(p_val_ordered[i] <= ((i/length(p_val_ordered))*alpha)){
+      i_max <- i
+      flag_atleast_1_discovery <- 1
+      fdr_decision[order(p_val)[1:i_max]] <- 1
       break()
     }
   }
-  return(list(fdr_decision,flag_atleast_1_discovery))
+  return(list(fdr_decision, flag_atleast_1_discovery))
 }
 
 ## Defining a function to genereate final test result dataframe. Inputs are 1) polluter test matrix, 2) significance level alpha (usually set as 0.1) and 3) file_path. Output is the final dataframe with starred p values with or withour fdr control (depending on whether the number of tests is greater than or equal to 15)
-fdr_analysis_wrapper<-function(polluter_test_matrix,alpha,county,water_body,file_path){
+fdr_analysis_wrapper <- function(polluter_test_matrix, alpha, county, file_path){
+  
+  ## Loading the dataframe df_polluter_processed
+  load(file = paste0(file_path,"polluter_files/df_polluter_processed.RData"))
   
   ####################################################
-  p_val_starred_generator<-function(p_val_mat,file_path){
+  p_val_rounded_fdr_decision_generator <- function(p_val_mat, alpha, file_path){
     ## FDR Analysis and saving the results
     ## Getting the row IDs in polluter_test_matrix for which we have some test results
-    test_pass_ids<-which(p_val_mat[,3]==1)
+    test_pass_ids <- which(p_val_mat[,3] == 1)
     ## Loading the dataframe df_polluter_processed
     load(file = paste0(file_path,"polluter_files/df_polluter_processed.RData"))
-    ## Getting the p values for one sided tests
-    p_values_t_test_one_sided_starred<-p_val_mat[test_pass_ids,1]
-    p_values_wilcox_test_one_sided_starred<-p_val_mat[test_pass_ids,2]
     
-    if(length(test_pass_ids)>=15){
-      ## Getting the FDR decision for Wilcoxon two sided and one side tests
-      fdr_decision_t_test_1_sided<-fdr_decision_cal(p_val = p_val_mat[test_pass_ids,1],alpha = alpha)[[1]]
-      fdr_decision_wilcox_test_1_sided<-fdr_decision_cal(p_val = p_val_mat[test_pass_ids,2],alpha = alpha)[[1]]
+    p_values_t_test_one_sided_rounded <- round(p_val_mat[,1],3)
+    p_values_wilcox_test_one_sided_rounded <- round(p_val_mat[,2],3)
+    
+    if(length(test_pass_ids) >= 15){
+      ## Initializing the fdr decision test vectors as NA
+      fdr_decision_t_test_1_sided <- rep(NA_integer_,nrow(p_val_mat))
+      fdr_decision_wilcox_test_1_sided <- rep(NA_integer_,nrow(p_val_mat))
       
-      p_values_t_test_one_sided_starred<-round(as.numeric(p_values_t_test_one_sided_starred),2)
-      p_values_wilcox_test_one_sided_starred<-round(as.numeric(p_values_wilcox_test_one_sided_starred),2)
-      ## Appending the p-values with * for fdr decision one cases
-      p_values_t_test_one_sided_starred[which(fdr_decision_t_test_1_sided==1)]<-paste0(p_values_t_test_one_sided_starred[which(fdr_decision_t_test_1_sided==1)],"*")
-      p_values_wilcox_test_one_sided_starred[which(fdr_decision_wilcox_test_1_sided==1)]<-paste0(p_values_wilcox_test_one_sided_starred[which(fdr_decision_wilcox_test_1_sided==1)],"*")
+      ## Getting the FDR decision for Wilcoxon two sided and one side tests
+      fdr_decision_t_test_1_sided[test_pass_ids] <- fdr_decision_cal(p_val = p_val_mat[test_pass_ids,1], alpha = alpha)[[1]]
+      fdr_decision_wilcox_test_1_sided[test_pass_ids] <- fdr_decision_cal(p_val = p_val_mat[test_pass_ids,2],alpha = alpha)[[1]]
+      p_val_mat_output <- cbind("p_values_t_test" = p_values_t_test_one_sided_rounded, "p_values_wilcox_test" =  p_values_wilcox_test_one_sided_rounded, "fdr_decision_t_test" = fdr_decision_t_test_1_sided, "fdr_decision_wilcox_test" = fdr_decision_wilcox_test_1_sided)
     }else{
-      p_values_t_test_one_sided_starred[which(p_values_t_test_one_sided_starred>0.05)]<-round(as.numeric(p_values_t_test_one_sided_starred[which(p_values_t_test_one_sided_starred>0.05)]),2)
-      p_values_wilcox_test_one_sided_starred[which(p_values_wilcox_test_one_sided_starred>0.05)]<-round(as.numeric(p_values_wilcox_test_one_sided_starred[which(p_values_wilcox_test_one_sided_starred>0.05)]),2)
-      p_values_t_test_one_sided_starred[which(p_values_t_test_one_sided_starred<=0.05)]<-paste0(round(p_values_t_test_one_sided_starred[which(p_values_t_test_one_sided_starred<=0.05)],2),"*")
-      p_values_wilcox_test_one_sided_starred[which(p_values_wilcox_test_one_sided_starred<=0.05)]<-paste0(round(p_values_wilcox_test_one_sided_starred[which(p_values_wilcox_test_one_sided_starred<=0.05)],2),"*")
+      p_val_mat_output <- cbind("p_values_t_test" = p_values_t_test_one_sided_rounded, "p_values_wilcox_test" = p_values_wilcox_test_one_sided_rounded, "fdr_decision_t_test" = NA_integer_, "fdr_decision_wilcox_test" = NA_integer_)
     }
-    ## Intializing the full pvalue vectors 
-    p_values_t_test<-rep(NA,nrow(p_val_mat))
-    p_values_wilcox_test<-rep(NA,nrow(p_val_mat))
-    ## Storing the p values starred
-    p_values_t_test[test_pass_ids]<-p_values_t_test_one_sided_starred
-    p_values_wilcox_test[test_pass_ids]<-p_values_wilcox_test_one_sided_starred
-    return(list(p_values_t_test,p_values_wilcox_test))
+    return(p_val_mat_output)
   }
   
   ####################################################
-  p_val_up<-p_val_starred_generator(p_val_mat = polluter_test_matrix[,c(7,8,9)],file_path = file_path)
-  p_val_down<-p_val_starred_generator(p_val_mat = polluter_test_matrix[,c(10,11,12)],file_path = file_path)
-  p_val_updown<-p_val_starred_generator(p_val_mat = polluter_test_matrix[,c(13,14,15)],file_path = file_path)
-  ## Getting the final dataframe df polluter test
-  #df_polluter_test<-data.frame(round(df_polluter_processed[test_pass_ids,c("lon","lat")],2),df_polluter_processed[test_pass_ids,"date"],round(polluter_test_matrix[test_pass_ids,c(1:4)],2),polluter_test_matrix[test_pass_ids,c(5,6)],p_values_t_test_one_sided_starred,p_values_wilcox_test_one_sided_starred)
-  df_polluter_test_mean<-data.frame(water_body,county,as.character(df_polluter_processed[,"date"]),round(polluter_test_matrix[,c(1,2)],2),polluter_test_matrix[,c(5,6)],p_val_up[[1]],p_val_down[[1]],p_val_updown[[1]],stringsAsFactors = F)
-  names(df_polluter_test_mean)<-c("Affected Water Body","County","Date","Upstream Mean","Downstream Mean","No. of Observations Upstream","No. of Observations Downstream","t test (up) p values","t test (down) p values","t test (updown) p values")
+  p_val_up <- p_val_rounded_fdr_decision_generator(p_val_mat = polluter_test_matrix[,c(7,8,9)], alpha = alpha, file_path = file_path)
+  p_val_down <- p_val_rounded_fdr_decision_generator(p_val_mat = polluter_test_matrix[,c(10,11,12)], alpha = alpha, file_path = file_path)
+  p_val_updown <- p_val_rounded_fdr_decision_generator(p_val_mat = polluter_test_matrix[,c(13,14,15)], alpha = alpha, file_path = file_path)
   
-  df_polluter_test_median<-data.frame(water_body,county,as.character(df_polluter_processed[,"date"]),round(polluter_test_matrix[,c(3,4)],2),polluter_test_matrix[,c(5,6)],p_val_up[[2]],p_val_down[[2]],p_val_updown[[2]],stringsAsFactors = F)
-  names(df_polluter_test_median)<-c("Affected Water Body","County","Date","Upstream Median","Downstream Median","No. of Observations Upstream","No. of Observations Downstream","Wilcox (up) p values","Wilcox (down) p values","Wilcox (updown) p values")
-  return(list(df_polluter_test_mean,df_polluter_test_median))
+  ## Getting the final indicators for three versions with varying degree of conservativeness
+  version_1_pass_mean <- as.numeric((p_val_up[,"p_values_t_test"] > 0.05) & (p_val_down[,"p_values_t_test"] <= 0.05) & (p_val_updown[,"p_values_t_test"] <= 0.05))
+  version_1_pass_median <- as.numeric((p_val_up[,"p_values_wilcox_test"] > 0.05) & (p_val_down[,"p_values_wilcox_test"] <= 0.05) & (p_val_updown[,"p_values_wilcox_test"] <= 0.05))
+  
+  version_2_pass_mean <- as.numeric(p_val_down[,"fdr_decision_t_test"] & p_val_updown[,"fdr_decision_t_test"])
+  version_2_pass_median <- as.numeric(p_val_down[,"fdr_decision_wilcox_test"] & p_val_updown[,"fdr_decision_wilcox_test"])
+  
+  version_3_pass_mean <- as.numeric(p_val_updown[,"fdr_decision_t_test"])
+  version_3_pass_median <- as.numeric(p_val_updown[,"fdr_decision_wilcox_test"])
+  
+  ####################################################
+  ## Getting the final dataframe df polluter test mean
+  
+  df_polluter_test_mean <- data.frame(county, polluter_test_matrix[,"lon"], polluter_test_matrix[,"lat"], polluter_test_matrix[,"lon_mapped"], polluter_test_matrix[,"lat_mapped"], as.character(df_polluter_processed[,"date"]), polluter_test_matrix[,"Volume"], polluter_test_matrix[,"Material"], polluter_test_matrix[,"Material_detail"], polluter_test_matrix[,"Operator"],round(polluter_test_matrix[,c(1,2)],2),polluter_test_matrix[,c(5,6)], p_val_up[,"p_values_t_test"], p_val_down[,"p_values_t_test"], p_val_updown[,"p_values_t_test"], version_1_pass_mean, version_2_pass_mean, version_3_pass_mean, stringsAsFactors = F)
+  names(df_polluter_test_mean) <- c("County", "Longitude_Original", "Latitude_Original", "Longitude_Mapped", "Latitude_Mapped", "Date", "Volume (gallons)","Material", "Material_detail", "Operator","Upstream Mean (ppb)","Downstream Mean (ppb)","No. of Observations Upstream","No. of Observations Downstream","t test (up) p values","t test (down) p values", "t test (updown) p values", "version_1_decision", "version_2_decision", "version_3_decision")
+  
+  ## Filtering for volume >= 400 gallons
+  #df_polluter_test_mean <- df_polluter_test_mean %>% filter((!is.na(Volume)) & (Volume >= 400))
+  
+  ####################################################
+  ## Getting the final dataframe df polluter test median
+  df_polluter_test_median <- data.frame(county, polluter_test_matrix[,"lon"], polluter_test_matrix[,"lat"], polluter_test_matrix[,"lon_mapped"], polluter_test_matrix[,"lat_mapped"], as.character(df_polluter_processed[,"date"]), polluter_test_matrix[,"Volume"], polluter_test_matrix[,"Material"], polluter_test_matrix[,"Material_detail"], polluter_test_matrix[,"Operator"], round(polluter_test_matrix[,c(3,4)],2),polluter_test_matrix[, c(5,6)], p_val_up[,"p_values_wilcox_test"], p_val_down[,"p_values_wilcox_test"], p_val_updown[,"p_values_wilcox_test"],  version_1_pass_median, version_2_pass_median, version_3_pass_median, stringsAsFactors = F)
+  names(df_polluter_test_median) <- c("County", "Longitude_Original", "Latitude_Original", "Longitude_Mapped", "Latitude_Mapped", "Date", "Volume (gallons)", "Material", "Material_detail", "Operator","Upstream Median (ppb)","Downstream Median (ppb)","No. of Observations Upstream","No. of Observations Downstream","Wilcox (up) p values","Wilcox (down) p values","Wilcox (updown) p values", "version_1_decision", "version_2_decision", "version_3_decision")
+  
+  ## Filtering for volume >= 400 gallons
+  #df_polluter_test_median <- df_polluter_test_median %>% filter((!is.na(Volume)) & (Volume >= 400))
+  
+  return(list(df_polluter_test_mean, df_polluter_test_median))
 }
 
 ########################################################################################################
